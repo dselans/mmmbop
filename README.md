@@ -26,6 +26,12 @@ Usage: mmmbop -h
             Run the migration without writing to the destination database
     -m, --migrate
             Run the migration
+    -r, --report-interval [interval]
+            Change the reporting interval (default 5s)
+    -o, --report-output [file]
+            Write report output to file
+    -C, --no-color
+            Disable color output
 ```
 
 ## Configuration
@@ -99,18 +105,43 @@ a field is not found, set `required = true` in the mapping entry.
 ## Output
 The output produced by `mmmbop` includes the following information:
 
-1. Overall progress %
-1. Estimated completion time
-1. Number of documents migrated
-1. Number of documents skipped
-1. Number of documents with a failed conversion
-1. Number of read errors
-1. Number of insert errors
-1. Number of connection retries
-1. Number of checkpoint writes
+```json
+{
+  "progress": {
+     "percent_complete": 0.1,
+     "migration_started_at": "2021-01-01T00:00:00Z",
+     "elapsed_time": "1h5m",
+     "estimated_duration": "1h"
+  },
+  "stats": {
+     "qps_src": "1000",
+     "qps_dst": "1000",
+     "documents_total": 90000000,
+     "documents_migrated": 200000000,
+     "checkpoint_total": 23922,
+     "checkpoint_sec_ago": 0
+  },
+  "errors": {
+     "documents_skipped": 0,
+     "documents_skipped_sec_ago": 0,
+     "errors_conv": 0,
+     "errors_conv_sec_ago": 0,
+     "errors_src_read": 0,
+     "errors_src_read_sec_ago": 0,
+     "errors_dst_write": 0,
+     "errors_dst_write_sec_ago": 0,
+     "conn_src_retries": 0,
+     "conn_src_retries_sec_ago": 0,
+     "conn_dst_retries": 0,
+     "conn_dst_retries_sec_ago": 0
+  }
+}
+```
 
-`mmmbop` produces colorized output by default. To disable this behavior, pass
-`--no-color` arg.
+`mmmbop` produces colorized output by default. To disable this, pass `--no-color`.
+
+By default, reporting occurs every `10s` - you can change this by passing 
+`--report-interval [interval]` ([using standard Go durations](https://pkg.go.dev/time#ParseDuration)).
 
 ## Performance
 This tool will _try_ to speed things up for the migration but there are still a
