@@ -10,7 +10,7 @@ suited for that task. If you need to migrate 10TB's of data over the course of
 a few days, this is the tool for you.
 
 ## Install
-Download the latest release from the [releases page](github.com/dselans/mmmbop/releases),
+1. Download the latest release from the [releases page](https://github.com/dselans/mmmbop/releases)
 put the binary in your path, `chmod +x` it and you're good to go.
 
 ## Usage
