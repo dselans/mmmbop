@@ -96,6 +96,22 @@ all fields, without specifying each field, use wildcards.
 _skipped_ and the migration will NOT fail. If you want the migration to fail when
 a field is not found, set `required = true` in the mapping entry.
 
+## Output
+The output produced by `mmmbop` includes the following information:
+
+1. Overall progress %
+1. Estimated completion time
+1. Number of documents migrated
+1. Number of documents skipped
+1. Number of documents with a failed conversion
+1. Number of read errors
+1. Number of insert errors
+1. Number of connection retries
+1. Number of checkpoint writes
+
+`mmmbop` produces colorized output by default. To disable this behavior, pass
+`--no-color` arg.
+
 ## Performance
 This tool will _try_ to speed things up for the migration but there are still a
 few things you can do to improve performance:
