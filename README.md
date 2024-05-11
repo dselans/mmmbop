@@ -1,9 +1,9 @@
 mmmbop
 ======
-An ultra-fast and resilient tool for migrating MongoDB data -> PostgreSQL.
+An ultra-fast and resilient tool for migrating BSON dumps -> PostgreSQL.
 
 It is specifically designed to be able to deal with migrating exceptionally large
-document stores which requires checkpointing, idempotency, and parallelism.
+amount of docs which requires checkpointing, idempotency, and parallelism.
 
 If you need to migrate a small amount of data - there are probably better tools
 suited for that task. If you need to migrate 10TB's of data over the course of 
@@ -21,7 +21,7 @@ Usage: mmmbop -h
     -v, --version
             Show the version of the program
     -c, --config cfg.toml (required)
-            Path to the configuration file
+            Path to the TOML configuration file
     -d, --dry-run
             Run the migration without writing to the destination database
     -m, --migrate
@@ -30,7 +30,9 @@ Usage: mmmbop -h
             Change the reporting interval (default 5s)
     -o, --report-output [file]
             Write report output to file
-    -C, --no-color
+    -R, --disable-resume
+            Disable resuming from a checkpoint
+    -C, --disable-color
             Disable color output
 ```
 
@@ -39,9 +41,6 @@ The configuration file is a TOML file that looks like this:
 
 ```toml
 [config]
-## Log level (default: info)
-# log_level = "info"
-
 ## Number of workers we will use for this migration (default: num cores)
 # num_workers = 4
 
@@ -49,51 +48,53 @@ The configuration file is a TOML file that looks like this:
 # batch_size = 1000
 
 ## Where we will write checkpointing info to (default: mongo-migrate-checkpoint.json)
-# checkpoint_file = "mongo-migrate-checkpoint.json"
+# checkpoint_file = "mmmbop-checkpoint.json"
 
 ## How often we will dump checkpointing info to disk (default: 1s)
 # checkpoint_interval = "1s"
 
-## Field used for checkpointing (default: _id)
-# checkpoint_field = "_id"
-
 [source]
-dsn = "mongodb://localhost:27017"
-database = "source_db"
+# Full path to the source file containing BSON documents
+file = "source.gzip"
+
+# Valid options are "gzip" or "plain"
+file_type = "gzip"
+
+# Valid options are 'json', 'bson'
+file_contents = "json"
 
 [destination]
+# Destination database type. Valid options are 'postgres', 'mysql'
+type = "postgres"
+
+# Full DSN for destination database server
 dsn = "postgres://user:password@localhost:5432/dbname"
-database = "destination_db"
 
 [mapping]
 foo_mapping = [
-    { src = "SOURCE_TABLE_NAME.foo", dst = "DST_TABLE_NAME.bar", conv = "int", required = true},
-    { src = "SOURCE_TABLE_NAME.baz", dst = "DST_TABLE_NAME.qux", conv = "string" },
-    { src = "SOURCE_TABLE_NAME.quux", dst = "DST_TABLE_NAME.corge", conv = "float" },
-    { src = "SOURCE_TABLE_NAME.grault", dst = "DST_TABLE_NAME.garply", conv = "bool" },
-    { src = "SOURCE_TABLE_NAME.waldo", dst = "DST_TABLE_NAME.fred", conv = "date" },
-    { src = "SOURCE_TABLE_NAME.plugh", dst = "DST_TABLE_NAME.xyzzy", conv = "datetime" },
-    { src = "SOURCE_TABLE_NAME.thud", dst = "DST_TABLE_NAME.wibble", conv = "timestamp"} 
+    { src = "foo", dst = "DST_TABLE_NAME.bar", conv = "int", required = true},
+    { src = "baz", dst = "DST_TABLE_NAME.qux", conv = "string" },
+    { src = "quux", dst = "DST_TABLE_NAME.corge", conv = "float" },
+    { src = "grault", dst = "DST_TABLE_NAME.garply", conv = "bool" },
+    { src = "waldo", dst = "DST_TABLE_NAME.fred", conv = "date" },
+    { src = "plugh", dst = "DST_TABLE_NAME.xyzzy", conv = "datetime" },
+    { src = "thud", dst = "DST_TABLE_NAME.wibble", conv = "timestamp"} 
 ]
 ```
 
 ### `[config]`
-Most of the settings should be self-explanatory but here are some notes:
+
+Most of the settings are documented in the config using comments. Here is some
+additional info:
 
 1. `log_level` - valid options are `debug`, `info`, `warn`, `error`, `fatal`, `panic`
 1. `checkpoint_interval` - is expecting Go-style duration strings (e.g. `1s`, `1m`, `1h`, etc.)
 1. `checkpoint_field` - is the field used for creating the "fetch query" TBD
 
-### `[source]`
-Settings used for specifying how to talk to the source (Mongo) database.
-
-### `[destination]`
-Settings used for specifying how to talk to the destination (Postgres) database.
-
 ### `[mapping]`
 1. At least one mapping must exist
-1. You can use a wildcard to match a field (e.g. `SOURCE_TABLE_NAME.foo_*`) but
-it **SHOULD** match only one field; if it matches multiple - `mongo-migrator`
+1. You can use a wildcard to match a field (e.g. `foo_*`) but
+it **SHOULD** match only one field; if it matches multiple - `mmmbop`
 will use the first field it finds. When in doubt, define the field explicitly.
 1. Valid `conv` options are: `int`, `string`, `float`, `bool`, `date`, `datetime`, `timestamp`, `bson`, `base64`
 1. Only the fields listed in the mapping will be migrated. If you want to migrate

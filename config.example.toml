@@ -1,0 +1,40 @@
+[config]
+## Number of workers we will use for this migration (default: num cores)
+# num_workers = 4
+
+## Number of documents we will fetch from the source database at a time (default: 1000)
+# batch_size = 1000
+
+## Where we will write checkpointing info to (default: mongo-migrate-checkpoint.json)
+# checkpoint_file = "mmmbop-checkpoint.json"
+
+## How often we will dump checkpointing info to disk (default: 1s)
+# checkpoint_interval = "1s"
+
+[source]
+# Full path to the source file containing BSON documents
+file = "source.gzip"
+
+# Valid options are "gzip" or "plaintext"
+file_type = "gzip"
+
+# Valid options are "json", "bson", "csv"
+file_contents = "bson"
+
+[destination]
+# Valid options are "mysql", "postgres"
+type = "postgres"
+
+# Full DSN for destination database server
+dsn = "postgres://user:password@localhost:5432/dbname"
+
+[mapping]
+foo_mapping = [
+    { src = "foo", dst = "DST_TABLE_NAME.bar", conv = "int", required = true},
+    { src = "baz", dst = "DST_TABLE_NAME.qux", conv = "string" },
+    { src = "quux", dst = "DST_TABLE_NAME.corge", conv = "float" },
+    { src = "grault", dst = "DST_TABLE_NAME.garply", conv = "bool" },
+    { src = "waldo", dst = "DST_TABLE_NAME.fred", conv = "date" },
+    { src = "plugh", dst = "DST_TABLE_NAME.xyzzy", conv = "datetime" },
+    { src = "thud", dst = "DST_TABLE_NAME.wibble", conv = "timestamp"}
+]
