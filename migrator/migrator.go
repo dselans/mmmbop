@@ -46,7 +46,7 @@ func New(cfg *config.Config) (*Migrator, error) {
 }
 
 func (m *Migrator) Run(shutdownCtx context.Context) error {
-	wg := &sync.WaitGroup{}
+	wWg := &sync.WaitGroup{}
 	errCh := make(chan error, m.cfg.TOML.Config.NumWorkers)
 	workCh := make(chan *Job, m.cfg.TOML.Config.NumWorkers)
 	cpWg := &sync.WaitGroup{}
@@ -55,12 +55,12 @@ func (m *Migrator) Run(shutdownCtx context.Context) error {
 
 	// Launch workers
 	for i := 0; i < m.cfg.TOML.Config.NumWorkers; i++ {
-		wg.Add(1)
+		wWg.Add(1)
 
 		go func() {
 			m.log.Debugf("worker %d start", i)
 			defer m.log.Debugf("worker %d exit", i)
-			defer wg.Done()
+			defer wWg.Done()
 
 			if err := m.runWorker(shutdownCtx, i, workCh, cpCh); err != nil {
 				errCh <- fmt.Errorf("error in worker %d: %v", i, err)
@@ -95,7 +95,7 @@ func (m *Migrator) Run(shutdownCtx context.Context) error {
 	select {
 	case <-shutdownCtx.Done():
 		m.log.Debug("received context done, waiting for workers to stop")
-		return m.waitWorkers(wg, cpWg, cpCancel)
+		return m.waitWorkers(wWg, cpWg, cpCancel)
 	case err := <-errCh:
 		cpCancel()
 
@@ -105,29 +105,42 @@ func (m *Migrator) Run(shutdownCtx context.Context) error {
 
 		m.log.Debug("Migrator run completed")
 
-		return m.waitWorkers(wg, cpWg, cpCancel)
+		return m.waitWorkers(wWg, cpWg, cpCancel)
 
 	}
 }
 
 func (m *Migrator) waitWorkers(wg, cpWg *sync.WaitGroup, cpCancel context.CancelFunc) error {
-	exitCh := make(chan bool, 1)
+	if err := timeout(func() {
+		wg.Wait()
+	}, 5*time.Second, "timeout"); err != nil {
+		return errors.New("timed out waiting for workers to exit")
+	}
+
+	// Workers are stopped, wait for checkpointer to stop
+	if err := timeout(func() {
+		cpCancel()
+		cpWg.Wait()
+	}, 5*time.Second, "timeout"); err != nil {
+		return errors.New("timed out waiting for checkpointer to exit")
+	}
+
+	return nil
+}
+
+// Wrapper for executing func with a timeout
+func timeout(f func(), t time.Duration, timeoutMsg string) error {
+	fin := make(chan bool, 1)
 
 	go func() {
-		wg.Wait()
-		exitCh <- true
+		f()
+		fin <- true
 	}()
 
 	select {
-	case <-exitCh:
-		// Workers have exited, can stop the checkpointer
-		m.log.Debug("workers have exited successfully, stopping checkpointer")
-		cpCancel()
-		cpWg.Wait() // TODO: This needs a timeout as well
-
+	case <-fin:
 		return nil
-	case <-time.After(5 * time.Second):
-		m.log.Warn("timed out waiting for workers and/or checkpointer to exit")
-		return fmt.Errorf("timed out waiting for workers and/or checkpointer to exit")
+	case <-time.After(t):
+		return errors.New(timeoutMsg)
 	}
 }

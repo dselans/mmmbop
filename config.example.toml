@@ -5,11 +5,8 @@
 ## Number of documents we will fetch from the source database at a time (default: 1000)
 # batch_size = 1000
 
-## Where we will write checkpointing info to (default: mongo-migrate-checkpoint.json)
-# checkpoint_file = "mmmbop-checkpoint.json"
-
-## How often we will dump checkpointing info to disk (default: 1s)
-# checkpoint_interval = "1s"
+## Where we will write checkpointing info to
+# checkpoint_file = "checkpoint.json"
 
 [source]
 # Full path to the source file containing BSON documents
