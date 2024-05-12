@@ -21,14 +21,18 @@ func (m *Migrator) runCheckpointer(ctx context.Context, cpChan <-chan *Checkpoin
 	llog.Debug("start")
 	defer llog.Debug("exit")
 
-	// TODO: Read from checkpoint ch and write to file
 MAIN:
 	for {
 		select {
 		case <-ctx.Done():
 			llog.Debug("received shutdown signal")
 			break MAIN
-		case cp := <-cpChan:
+		case cp, ok := <-cpChan:
+			if !ok {
+				llog.Debug("checkpoint channel closed - exiting checkpointer")
+				break MAIN
+			}
+
 			llog.Debugf("received checkpoint at offset '%v' worker id '%v'", cp.Offset, cp.WorkerID)
 
 			if err := m.saveCheckpoint(cp); err != nil {

@@ -49,13 +49,14 @@ func New(cfg *config.Config) (*Migrator, error) {
 	}, nil
 }
 
-func (m *Migrator) Run(shutdownCtx context.Context) error {
+func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.CancelFunc) error {
 	wWg := &sync.WaitGroup{}
 	errCh := make(chan error, m.cfg.TOML.Config.NumWorkers)
 	workCh := make(chan *WorkerJob, m.cfg.TOML.Config.NumWorkers)
 	cpWg := &sync.WaitGroup{}
 	cpCtx, cpCancel := context.WithCancel(context.Background())
-	cpCh := make(chan *CheckpointJob, 1000)
+	cpCh := make(chan *CheckpointJob, 10_000)
+	finCh := make(chan bool, 1)
 	defer cpCancel()
 
 	// Launch workers
@@ -84,6 +85,7 @@ func (m *Migrator) Run(shutdownCtx context.Context) error {
 
 		// Reader has finished
 		m.log.Debug("reader finished, nothing else to do")
+		finCh <- true
 	}()
 
 	// Launch checkpointer
@@ -103,22 +105,24 @@ func (m *Migrator) Run(shutdownCtx context.Context) error {
 	select {
 	case <-shutdownCtx.Done():
 		m.log.Debug("received context done, waiting for workers to stop")
-		return m.shutdown(wWg, cpWg, cpCancel)
+		return m.shutdown(wWg, cpWg, shutdownCancel, cpCancel)
+	case <-finCh:
+		m.log.Debug("received completion signal, shutting everything down")
+		m.log.Info("Migrator run completed")
+		return m.shutdown(wWg, cpWg, shutdownCancel, cpCancel)
 	case err := <-errCh:
 		if err != nil {
 			return fmt.Errorf("received error: %v", err)
 		}
 
-		m.log.Debug("Migrator run completed - shutting down")
-
-		return m.shutdown(wWg, cpWg, cpCancel)
-
+		return m.shutdown(wWg, cpWg, shutdownCancel, cpCancel)
 	}
 }
 
-func (m *Migrator) shutdown(wg, cpWg *sync.WaitGroup, cpCancel context.CancelFunc) error {
+func (m *Migrator) shutdown(wWg, cpWg *sync.WaitGroup, shutdownCancel, cpCancel context.CancelFunc) error {
 	if err := timeout(func() {
-		wg.Wait()
+		shutdownCancel()
+		wWg.Wait()
 	}, 5*time.Second); err != nil {
 		return errors.New("timed out waiting for workers to exit")
 	}

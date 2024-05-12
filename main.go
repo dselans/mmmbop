@@ -50,7 +50,7 @@ func main() {
 	}()
 
 	// Run the migrator
-	if err := m.Run(ctx); err != nil {
+	if err := m.Run(ctx, cancel); err != nil {
 		logrus.Errorf("error during migrator run: %s", err)
 		os.Exit(1)
 	}
