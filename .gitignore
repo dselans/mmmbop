@@ -1,2 +1,5 @@
 .idea
 config.toml
+*.gzip
+*.gz
+*.json*

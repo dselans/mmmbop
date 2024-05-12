@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	"github.com/dselans/mmmbop/checkpoint"
 	"github.com/dselans/mmmbop/config"
 )
 
@@ -21,6 +22,7 @@ type Checkpoint struct {
 type Migrator struct {
 	cfg *config.Config
 	log *logrus.Entry
+	cp  *checkpoint.Checkpoint
 }
 
 func New(cfg *config.Config) (*Migrator, error) {
@@ -28,13 +30,20 @@ func New(cfg *config.Config) (*Migrator, error) {
 		return nil, errors.New("error validating config")
 	}
 
+	// Load checkpoint (or create if it doesn't exist)
+	cp, err := checkpoint.Load(cfg.TOML.Config.CheckpointFile, cfg.TOML.Source.File, cfg.TOML.Source.FileType)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to load checkpoint file")
+	}
+
 	return &Migrator{
 		cfg: cfg,
+		cp:  cp,
 		log: logrus.WithField("pkg", "migrator"),
 	}, nil
 }
 
-func (m *Migrator) Run(shutdownCtx context.Context, cfg *config.Config) error {
+func (m *Migrator) Run(shutdownCtx context.Context) error {
 	wg := &sync.WaitGroup{}
 	errCh := make(chan error, m.cfg.TOML.Config.NumWorkers)
 	workCh := make(chan *Job, m.cfg.TOML.Config.NumWorkers)

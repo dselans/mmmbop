@@ -2,6 +2,7 @@ package migrator
 
 import (
 	"context"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -45,6 +46,8 @@ func (m *Migrator) processJob(j *Job) error {
 	llog := m.log.WithFields(logrus.Fields{
 		"method": "processWork",
 	})
+
+	time.Sleep(time.Second)
 
 	llog.Debugf("processing job: %v", j)
 

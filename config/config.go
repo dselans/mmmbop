@@ -67,11 +67,16 @@ type TOML struct {
 }
 
 type TOMLConfig struct {
-	LogLevel           string        `toml:"log_level"`
-	NumWorkers         int           `toml:"num_workers"`
-	BatchSize          int           `toml:"batch_size"`
-	CheckpointFile     string        `toml:"checkpoint_file"`
-	CheckpointInterval time.Duration `toml:"checkpoint_interval"`
+	LogLevel        string `toml:"log_level"`
+	NumWorkers      int    `toml:"num_workers"`
+	BatchSize       int    `toml:"batch_size"`
+	CheckpointFile  string `toml:"checkpoint_file"`
+	CheckpointIndex string `toml:"checkpoint_index"`
+}
+
+type CheckpointFile struct {
+	Index  []byte `json:"index"` // base64'd, gob data used by gzran
+	Offset int64  `json:"offset"`
 }
 
 type TOMLSource struct {
@@ -167,9 +172,7 @@ func setTOMLDefaults(t *TOML) error {
 		t.Config.NumWorkers = DefaultNumWorkers
 	}
 
-	if t.Config.CheckpointInterval == 0 {
-		t.Config.CheckpointInterval = DefaultCheckpointInterval
-	}
+	// TODO: Add default checkpoint index file
 
 	return nil
 }
@@ -225,10 +228,6 @@ func validateTOMLConfig(c *TOMLConfig) error {
 
 	if c.NumWorkers < MinNumWorkers || c.NumWorkers > MaxNumWorkers {
 		return errors.Errorf("config.num_workers must be between %d and %d", MinNumWorkers, MaxNumWorkers)
-	}
-
-	if c.CheckpointInterval < MinCheckpointInterval || c.CheckpointInterval > MaxCheckpointInterval {
-		return errors.Errorf("config.checkpoint_interval must be between %d and %d", MinCheckpointInterval, MaxCheckpointInterval)
 	}
 
 	return nil

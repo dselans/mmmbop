@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
 
 	"github.com/dselans/mmmbop/config"
+	"github.com/dselans/mmmbop/migrator"
 )
 
 func main() {
@@ -29,7 +31,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := m.Run(); err != nil {
+	fmt.Println("Exiting after checkpoint loading")
+	os.Exit(1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := m.Run(ctx); err != nil {
 		logrus.Errorf("error during migrator run: %s", err)
 		os.Exit(1)
 	}
@@ -57,7 +65,7 @@ func displayConfig(cfg *config.Config) {
 	logrus.Infof("  config.num_workers: %d", cfg.TOML.Config.NumWorkers)
 	logrus.Infof("  config.batch_size: %d", cfg.TOML.Config.BatchSize)
 	logrus.Infof("  config.checkpoint_file: %s", cfg.TOML.Config.CheckpointFile)
-	logrus.Infof("  config.checkpoint_interval: %s", cfg.TOML.Config.CheckpointInterval)
+	logrus.Infof("  config.checkpoint_index: %s", cfg.TOML.Config.CheckpointIndex)
 	logrus.Info("")
 	logrus.Info("  [SOURCE]")
 	logrus.Infof("  source.file: %s", cfg.TOML.Source.File)
