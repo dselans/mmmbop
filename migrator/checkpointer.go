@@ -26,6 +26,8 @@ MAIN:
 		case <-ctx.Done():
 			llog.Debug("received shutdown signal")
 			break MAIN
+		case cp := <-cpChan:
+			llog.Debugf("received checkpoint: %v", cp)
 		}
 	}
 

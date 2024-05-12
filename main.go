@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 
 	"github.com/sirupsen/logrus"
 
@@ -25,18 +26,30 @@ func main() {
 
 	displayConfig(cfg)
 
+	// Load config, checkpoint file, generate/load index etc.
 	m, err := migrator.New(cfg)
 	if err != nil {
 		logrus.Errorf("unable to create migrator: %s", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("Exiting after checkpoint loading")
-	os.Exit(1)
-
+	// Context used for facilitating shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Detect ctrl-c and kill signals for graceful shutdown
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Kill)
+
+	go func() {
+		sig := <-c
+		logrus.Debugf("Received system call: %+v", sig)
+		logrus.Debug("Telling migrator to stop...")
+		cancel()
+	}()
+
+	// Run the migrator
 	if err := m.Run(ctx); err != nil {
 		logrus.Errorf("error during migrator run: %s", err)
 		os.Exit(1)

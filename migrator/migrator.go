@@ -14,9 +14,11 @@ import (
 )
 
 type Job struct {
+	ID int64
 }
 
 type Checkpoint struct {
+	ID int64
 }
 
 type Migrator struct {
@@ -92,7 +94,7 @@ func (m *Migrator) Run(shutdownCtx context.Context) error {
 	// Read from errCh to detect errors
 	select {
 	case <-shutdownCtx.Done():
-		m.log.Debug("received context done")
+		m.log.Debug("received context done, waiting for workers to stop")
 		return m.waitWorkers(wg, cpWg, cpCancel)
 	case err := <-errCh:
 		cpCancel()
@@ -119,11 +121,13 @@ func (m *Migrator) waitWorkers(wg, cpWg *sync.WaitGroup, cpCancel context.Cancel
 	select {
 	case <-exitCh:
 		// Workers have exited, can stop the checkpointer
+		m.log.Debug("workers have exited successfully, stopping checkpointer")
 		cpCancel()
-		cpWg.Wait()
+		cpWg.Wait() // TODO: This needs a timeout as well
 
 		return nil
 	case <-time.After(5 * time.Second):
+		m.log.Warn("timed out waiting for workers and/or checkpointer to exit")
 		return fmt.Errorf("timed out waiting for workers and/or checkpointer to exit")
 	}
 }

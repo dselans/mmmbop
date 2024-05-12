@@ -2,7 +2,6 @@ package migrator
 
 import (
 	"context"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -29,13 +28,15 @@ MAIN:
 			llog.Debug("received shutdown signal")
 			break MAIN
 		case job := <-jobCh:
-			llog.Debugf("received job: %v", job)
+			llog.Debugf("received job ID '%d'", job.ID)
 			if err := m.processJob(job); err != nil {
 				return errors.Wrap(err, "error processing job")
 			}
 
-			llog.Debug("finished processing, sending checkpoint")
-			cpChan <- &Checkpoint{}
+			llog.Debugf("finished processing, sending checkpoint for job ID '%v'", job.ID)
+			cpChan <- &Checkpoint{
+				ID: job.ID,
+			}
 		}
 	}
 
@@ -47,9 +48,7 @@ func (m *Migrator) processJob(j *Job) error {
 		"method": "processWork",
 	})
 
-	time.Sleep(time.Second)
-
-	llog.Debugf("processing job: %v", j)
+	llog.Debugf("processing job with id '%d'", j.ID)
 
 	// TODO: Implement
 	return nil
