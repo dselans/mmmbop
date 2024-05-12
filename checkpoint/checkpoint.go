@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -25,9 +26,8 @@ type Checkpoint struct {
 
 	// Not marshalled
 	Index gzran.Index `json:"-"`
-}
 
-type Job struct {
+	*sync.Mutex
 }
 
 func Load(checkpointFile, sourceFile, sourceFileType string) (*Checkpoint, error) {
@@ -67,7 +67,10 @@ func load(checkpointFile string) (*Checkpoint, error) {
 		return nil, errors.Wrap(err, "unable to read checkpoint file")
 	}
 
-	cp := &Checkpoint{}
+	cp := &Checkpoint{
+		Mutex: &sync.Mutex{},
+	}
+
 	if err := json.Unmarshal(data, cp); err != nil {
 		return nil, errors.Wrap(err, "unable to unmarshal checkpoint file")
 	}
@@ -118,6 +121,7 @@ func create(checkpointFile, sourceFile, sourceFileType string) (*Checkpoint, err
 		StartedAt:   time.Now(),
 		LastUpdated: time.Now(),
 		Index:       index,
+		Mutex:       &sync.Mutex{},
 	}
 
 	data, err := json.MarshalIndent(cp, "", "  ")
@@ -158,7 +162,8 @@ func generateGzipIndex(sourceFile string) (gzran.Index, error) {
 	}
 
 	// Create a Reader that builds the index as it reads
-	reader, err := gzran.NewReader(f)
+	reader, err := gzran.NewReaderInterval(f, 4096)
+	//reader, err := gzran.NewReader(f)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create gzip reader")
 	}
@@ -170,4 +175,21 @@ func generateGzipIndex(sourceFile string) (gzran.Index, error) {
 	}
 
 	return reader.Index, nil
+}
+
+func (cp *Checkpoint) Save(checkpointFile string) error {
+	cp.Lock()
+	defer cp.Unlock()
+
+	data, err := json.MarshalIndent(cp, "", "  ")
+	if err != nil {
+		return errors.Wrap(err, "unable to marshal checkpoint file")
+	}
+
+	// TODO: Improve writing to file by first writing to temp file and renaming
+	if err := os.WriteFile(checkpointFile, data, 0644); err != nil {
+		return errors.Wrap(err, "unable to write checkpoint file")
+	}
+
+	return nil
 }

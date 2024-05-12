@@ -13,18 +13,20 @@ import (
 )
 
 const (
-	EnvVarPrefix = "MMMBOP"
+	EnvVarPrefix          = "MMMBOP"
+	CheckpointIndexSuffix = ".index"
 
 	DefaultBatchSize          = 10
 	DefaultNumWorkers         = 2
-	DefaultCheckpointInterval = time.Minute
+	DefaultCheckpointInterval = duration(5 * time.Second)
+	DefaultCheckpointFile     = "checkpoint.json"
 
 	MinBatchSize          = 1
 	MaxBatchSize          = 10_000
 	MinNumWorkers         = 1
 	MaxNumWorkers         = 100
-	MinCheckpointInterval = 1 * time.Second
-	MaxCheckpointInterval = 1 * time.Hour
+	MinCheckpointInterval = duration(1 * time.Millisecond)
+	MaxCheckpointInterval = duration(1 * time.Hour)
 )
 
 var (
@@ -67,11 +69,12 @@ type TOML struct {
 }
 
 type TOMLConfig struct {
-	LogLevel        string `toml:"log_level"`
-	NumWorkers      int    `toml:"num_workers"`
-	BatchSize       int    `toml:"batch_size"`
-	CheckpointFile  string `toml:"checkpoint_file"`
-	CheckpointIndex string `toml:"checkpoint_index"`
+	LogLevel           string   `toml:"log_level"`
+	NumWorkers         int      `toml:"num_workers"`
+	BatchSize          int      `toml:"batch_size"`
+	CheckpointFile     string   `toml:"checkpoint_file"`
+	CheckpointIndex    string   `toml:"checkpoint_index"`
+	CheckpointInterval duration `toml:"checkpoint_interval"`
 }
 
 type CheckpointFile struct {
@@ -172,18 +175,28 @@ func setTOMLDefaults(t *TOML) error {
 		t.Config.NumWorkers = DefaultNumWorkers
 	}
 
-	// TODO: Add default checkpoint index file
+	if t.Config.CheckpointInterval == 0 {
+		t.Config.CheckpointInterval = DefaultCheckpointInterval
+	}
+
+	if t.Config.CheckpointFile == "" {
+		t.Config.CheckpointFile = DefaultCheckpointFile
+	}
+
+	if t.Config.CheckpointIndex == "" {
+		t.Config.CheckpointIndex = t.Config.CheckpointFile + CheckpointIndexSuffix
+	}
 
 	return nil
 }
 
 func Validate(c *Config) error {
 	if err := validateCLIArgs(c.CLI); err != nil {
-		return errors.Wrap(err, "error validating CLI")
+		return errors.Wrap(err, "error validating CLI args")
 	}
 
 	if err := validateTOML(c.TOML); err != nil {
-		return errors.Wrap(err, "error validating TOML")
+		return errors.Wrap(err, "error validating toml config")
 	}
 
 	return nil
@@ -196,7 +209,7 @@ func validateTOML(t *TOML) error {
 
 	// Validate [config]
 	if err := validateTOMLConfig(t.Config); err != nil {
-		return errors.Wrap(err, "error validating toml [config]")
+		return errors.Wrap(err, "config error(s)")
 	}
 
 	// Validate [source]
@@ -206,12 +219,12 @@ func validateTOML(t *TOML) error {
 
 	// Validate [destination]
 	if err := validateTOMLDestination(t.Destination); err != nil {
-		return errors.Wrap(err, "error validating toml [destination]")
+		return errors.Wrap(err, "destination error(s)")
 	}
 
 	// Validate mapping entries
 	if err := validateTOMLMapping(t.Mapping); err != nil {
-		return errors.Wrap(err, "error validating toml [mapping]")
+		return errors.Wrap(err, "mapping error(s)")
 	}
 
 	return nil
@@ -228,6 +241,18 @@ func validateTOMLConfig(c *TOMLConfig) error {
 
 	if c.NumWorkers < MinNumWorkers || c.NumWorkers > MaxNumWorkers {
 		return errors.Errorf("config.num_workers must be between %d and %d", MinNumWorkers, MaxNumWorkers)
+	}
+
+	if c.CheckpointInterval < MinCheckpointInterval || c.CheckpointInterval > MaxCheckpointInterval {
+		return errors.Errorf("config.checkpoint_interval must be between %s and %s", MinCheckpointInterval, MaxCheckpointInterval)
+	}
+
+	if c.CheckpointFile == "" {
+		return errors.New("config.checkpoint_file cannot be empty")
+	}
+
+	if c.CheckpointIndex == "" {
+		return errors.New("config.checkpoint_index cannot be empty")
 	}
 
 	return nil
@@ -402,5 +427,21 @@ func validateCLIArgs(cli *CLI) error {
 		return errors.New("config cannot be nil")
 	}
 
+	return nil
+}
+
+// Copied from https://www.kelche.co/blog/go/toml/
+type duration time.Duration
+
+func (d duration) MarshalText() ([]byte, error) {
+	return []byte(time.Duration(d).String()), nil
+}
+
+func (d *duration) UnmarshalText(text []byte) error {
+	dur, err := time.ParseDuration(string(text))
+	if err != nil {
+		return err
+	}
+	*d = duration(dur)
 	return nil
 }

@@ -10,8 +10,8 @@ import (
 func (m *Migrator) runWorker(
 	shutdownCtx context.Context,
 	id int,
-	jobCh <-chan *Job,
-	cpChan chan<- *Checkpoint,
+	jobCh <-chan *WorkerJob,
+	cpChan chan<- *CheckpointJob,
 ) error {
 	llog := m.log.WithFields(logrus.Fields{
 		"method": "runWorker",
@@ -27,15 +27,21 @@ MAIN:
 		case <-shutdownCtx.Done():
 			llog.Debug("received shutdown signal")
 			break MAIN
-		case job := <-jobCh:
-			llog.Debugf("received job ID '%d'", job.ID)
+		case job, open := <-jobCh:
+			if !open {
+				llog.Debug("job channel closed - exiting worker")
+				break MAIN
+			}
+
+			llog.Debugf("received job at offset '%v'", job.Offset)
+
 			if err := m.processJob(job); err != nil {
 				return errors.Wrap(err, "error processing job")
 			}
 
-			llog.Debugf("finished processing, sending checkpoint for job ID '%v'", job.ID)
-			cpChan <- &Checkpoint{
-				ID: job.ID,
+			cpChan <- &CheckpointJob{
+				Offset:   job.Offset,
+				WorkerID: id,
 			}
 		}
 	}
@@ -43,12 +49,12 @@ MAIN:
 	return nil
 }
 
-func (m *Migrator) processJob(j *Job) error {
+func (m *Migrator) processJob(j *WorkerJob) error {
 	llog := m.log.WithFields(logrus.Fields{
 		"method": "processWork",
 	})
 
-	llog.Debugf("processing job with id '%d'", j.ID)
+	llog.Debugf("processing job at offset '%v'", j.Offset)
 
 	// TODO: Implement
 	return nil

@@ -13,18 +13,21 @@ import (
 	"github.com/dselans/mmmbop/config"
 )
 
-type Job struct {
-	ID int64
+type WorkerJob struct {
+	Line   string
+	Offset int64
 }
 
-type Checkpoint struct {
-	ID int64
+type CheckpointJob struct {
+	WorkerID int
+	Offset   int64
 }
 
 type Migrator struct {
-	cfg *config.Config
-	log *logrus.Entry
-	cp  *checkpoint.Checkpoint
+	cfg  *config.Config
+	log  *logrus.Entry
+	cp   *checkpoint.Checkpoint
+	last time.Time
 }
 
 func New(cfg *config.Config) (*Migrator, error) {
@@ -39,19 +42,21 @@ func New(cfg *config.Config) (*Migrator, error) {
 	}
 
 	return &Migrator{
-		cfg: cfg,
-		cp:  cp,
-		log: logrus.WithField("pkg", "migrator"),
+		cfg:  cfg,
+		cp:   cp,
+		last: time.Time{},
+		log:  logrus.WithField("pkg", "migrator"),
 	}, nil
 }
 
 func (m *Migrator) Run(shutdownCtx context.Context) error {
 	wWg := &sync.WaitGroup{}
 	errCh := make(chan error, m.cfg.TOML.Config.NumWorkers)
-	workCh := make(chan *Job, m.cfg.TOML.Config.NumWorkers)
+	workCh := make(chan *WorkerJob, m.cfg.TOML.Config.NumWorkers)
 	cpWg := &sync.WaitGroup{}
 	cpCtx, cpCancel := context.WithCancel(context.Background())
-	cpCh := make(chan *Checkpoint, 1000)
+	cpCh := make(chan *CheckpointJob, 1000)
+	defer cpCancel()
 
 	// Launch workers
 	for i := 0; i < m.cfg.TOML.Config.NumWorkers; i++ {
@@ -76,6 +81,9 @@ func (m *Migrator) Run(shutdownCtx context.Context) error {
 		if err := m.runReader(shutdownCtx, workCh); err != nil {
 			errCh <- fmt.Errorf("error in reader: %v", err)
 		}
+
+		// Reader has finished
+		m.log.Debug("reader finished, nothing else to do")
 	}()
 
 	// Launch checkpointer
@@ -95,25 +103,23 @@ func (m *Migrator) Run(shutdownCtx context.Context) error {
 	select {
 	case <-shutdownCtx.Done():
 		m.log.Debug("received context done, waiting for workers to stop")
-		return m.waitWorkers(wWg, cpWg, cpCancel)
+		return m.shutdown(wWg, cpWg, cpCancel)
 	case err := <-errCh:
-		cpCancel()
-
 		if err != nil {
 			return fmt.Errorf("received error: %v", err)
 		}
 
-		m.log.Debug("Migrator run completed")
+		m.log.Debug("Migrator run completed - shutting down")
 
-		return m.waitWorkers(wWg, cpWg, cpCancel)
+		return m.shutdown(wWg, cpWg, cpCancel)
 
 	}
 }
 
-func (m *Migrator) waitWorkers(wg, cpWg *sync.WaitGroup, cpCancel context.CancelFunc) error {
+func (m *Migrator) shutdown(wg, cpWg *sync.WaitGroup, cpCancel context.CancelFunc) error {
 	if err := timeout(func() {
 		wg.Wait()
-	}, 5*time.Second, "timeout"); err != nil {
+	}, 5*time.Second); err != nil {
 		return errors.New("timed out waiting for workers to exit")
 	}
 
@@ -121,7 +127,7 @@ func (m *Migrator) waitWorkers(wg, cpWg *sync.WaitGroup, cpCancel context.Cancel
 	if err := timeout(func() {
 		cpCancel()
 		cpWg.Wait()
-	}, 5*time.Second, "timeout"); err != nil {
+	}, 5*time.Second); err != nil {
 		return errors.New("timed out waiting for checkpointer to exit")
 	}
 
@@ -129,7 +135,7 @@ func (m *Migrator) waitWorkers(wg, cpWg *sync.WaitGroup, cpCancel context.Cancel
 }
 
 // Wrapper for executing func with a timeout
-func timeout(f func(), t time.Duration, timeoutMsg string) error {
+func timeout(f func(), t time.Duration) error {
 	fin := make(chan bool, 1)
 
 	go func() {
@@ -141,6 +147,6 @@ func timeout(f func(), t time.Duration, timeoutMsg string) error {
 	case <-fin:
 		return nil
 	case <-time.After(t):
-		return errors.New(timeoutMsg)
+		return errors.New("timeout")
 	}
 }
