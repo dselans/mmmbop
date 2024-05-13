@@ -14,7 +14,7 @@ import (
 )
 
 type WorkerJob struct {
-	Line   string
+	Data   string
 	Offset int64
 }
 
@@ -24,10 +24,12 @@ type CheckpointJob struct {
 }
 
 type Migrator struct {
-	cfg  *config.Config
-	log  *logrus.Entry
-	cp   *checkpoint.Checkpoint
-	last time.Time
+	cfg         *config.Config
+	log         *logrus.Entry
+	cp          *checkpoint.Checkpoint
+	last        time.Time
+	checksums   map[string]struct{}
+	checksumsMu *sync.Mutex
 }
 
 func New(cfg *config.Config) (*Migrator, error) {
@@ -42,10 +44,12 @@ func New(cfg *config.Config) (*Migrator, error) {
 	}
 
 	return &Migrator{
-		cfg:  cfg,
-		cp:   cp,
-		last: time.Time{},
-		log:  logrus.WithField("pkg", "migrator"),
+		cfg:         cfg,
+		cp:          cp,
+		last:        time.Time{},
+		log:         logrus.WithField("pkg", "migrator"),
+		checksums:   make(map[string]struct{}),
+		checksumsMu: &sync.Mutex{},
 	}, nil
 }
 
@@ -54,10 +58,9 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 	errCh := make(chan error, m.cfg.TOML.Config.NumWorkers)
 	workCh := make(chan *WorkerJob, m.cfg.TOML.Config.NumWorkers)
 	cpWg := &sync.WaitGroup{}
-	cpCtx, cpCancel := context.WithCancel(context.Background())
 	cpCh := make(chan *CheckpointJob, 10_000)
+	cpControlCh := make(chan bool, 1)
 	finCh := make(chan bool, 1)
-	defer cpCancel()
 
 	// Launch workers
 	for i := 0; i < m.cfg.TOML.Config.NumWorkers; i++ {
@@ -96,7 +99,7 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 		cpWg.Add(1)
 		defer cpWg.Done()
 
-		if err := m.runCheckpointer(cpCtx, cpCh); err != nil {
+		if err := m.runCheckpointer(cpControlCh, cpCh); err != nil {
 			errCh <- fmt.Errorf("error in checkpointer: %v", err)
 		}
 	}()
@@ -105,21 +108,21 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 	select {
 	case <-shutdownCtx.Done():
 		m.log.Debug("received context done, waiting for workers to stop")
-		return m.shutdown(wWg, cpWg, shutdownCancel, cpCancel)
+		return m.shutdown(wWg, cpWg, shutdownCancel, cpControlCh, true)
 	case <-finCh:
-		m.log.Debug("received completion signal, shutting everything down")
+		m.log.Debug("received completion signal, stopping workers and checkpointer")
 		m.log.Info("Migrator run completed")
-		return m.shutdown(wWg, cpWg, shutdownCancel, cpCancel)
+		return m.shutdown(wWg, cpWg, shutdownCancel, cpControlCh)
 	case err := <-errCh:
 		if err != nil {
 			return fmt.Errorf("received error: %v", err)
 		}
 
-		return m.shutdown(wWg, cpWg, shutdownCancel, cpCancel)
+		return m.shutdown(wWg, cpWg, shutdownCancel, cpControlCh, true)
 	}
 }
 
-func (m *Migrator) shutdown(wWg, cpWg *sync.WaitGroup, shutdownCancel, cpCancel context.CancelFunc) error {
+func (m *Migrator) shutdown(wWg, cpWg *sync.WaitGroup, shutdownCancel context.CancelFunc, cpControlCh chan<- bool, interrupt ...bool) error {
 	if err := timeout(func() {
 		shutdownCancel()
 		wWg.Wait()
@@ -129,7 +132,11 @@ func (m *Migrator) shutdown(wWg, cpWg *sync.WaitGroup, shutdownCancel, cpCancel 
 
 	// Workers are stopped, wait for checkpointer to stop
 	if err := timeout(func() {
-		cpCancel()
+		if len(interrupt) > 0 {
+			cpControlCh <- true
+		} else {
+			cpControlCh <- false
+		}
 		cpWg.Wait()
 	}, 5*time.Second); err != nil {
 		return errors.New("timed out waiting for checkpointer to exit")

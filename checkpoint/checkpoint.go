@@ -18,11 +18,12 @@ const (
 
 // Checkpoint contains checkpoint info
 type Checkpoint struct {
-	IndexFile   string    `json:"index_file"`
-	IndexOffset int64     `json:"index_offset"`
-	SourceFile  string    `json:"source_file"`
-	StartedAt   time.Time `json:"started_at"`
-	LastUpdated time.Time `json:"last_updated"`
+	IndexFile   string     `json:"index_file"`
+	IndexOffset int64      `json:"index_offset"`
+	SourceFile  string     `json:"source_file"`
+	StartedAt   time.Time  `json:"started_at"`
+	LastUpdated time.Time  `json:"last_updated"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
 
 	// Not marshalled
 	Index gzran.Index `json:"-"`
@@ -53,10 +54,10 @@ func Load(checkpointFile, sourceFile, sourceFileType string) (*Checkpoint, error
 	}
 
 	if createCheckpoint {
-		logrus.Debug("creating checkpoint file '%s'", checkpointFile)
+		logrus.Debugf("creating checkpoint file '%s'", checkpointFile)
 		return create(checkpointFile, sourceFile, sourceFileType)
 	} else {
-		logrus.Debug("loading checkpoint file '%s'", checkpointFile)
+		logrus.Debugf("loading checkpoint file '%s'", checkpointFile)
 		return load(checkpointFile)
 	}
 }
@@ -73,6 +74,10 @@ func load(checkpointFile string) (*Checkpoint, error) {
 
 	if err := json.Unmarshal(data, cp); err != nil {
 		return nil, errors.Wrap(err, "unable to unmarshal checkpoint file")
+	}
+
+	if !cp.CompletedAt.IsZero() {
+		return nil, errors.New("migration already completed")
 	}
 
 	// Open index file

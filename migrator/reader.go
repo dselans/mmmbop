@@ -50,7 +50,8 @@ MAIN:
 			offset, err = reader.Seek(0, io.SeekCurrent)
 			if err != nil {
 				if err == io.EOF {
-					// TODO: Need to get everyone to understand completion -- cause goroutines to exit gracefully
+					// Once reader exits, migrator will signal workers and
+					// checkpointer to exit.
 					llog.Debug("EOF reached")
 					break MAIN
 				}
@@ -60,7 +61,7 @@ MAIN:
 
 			llog.Debugf("sending job at offset: %d", offset)
 			workCh <- &WorkerJob{
-				Line:   line,
+				Data:   line,
 				Offset: offset,
 			}
 

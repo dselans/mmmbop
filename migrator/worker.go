@@ -2,6 +2,8 @@ package migrator
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -54,7 +56,19 @@ func (m *Migrator) processJob(j *WorkerJob) error {
 		"method": "processWork",
 	})
 
+	checksum := fmt.Sprintf("%x", sha256.Sum256([]byte(j.Data)))
+
 	llog.Debugf("processing job at offset '%v'", j.Offset)
+
+	m.checksumsMu.Lock()
+	defer m.checksumsMu.Unlock()
+
+	if _, ok := m.checksums[checksum]; ok {
+		llog.Debugf("CHECKSUM %s ALREADY IN MAP (offset '%d')", checksum, j.Offset)
+		return nil
+	}
+
+	m.checksums[checksum] = struct{}{}
 
 	// TODO: Implement
 	return nil
