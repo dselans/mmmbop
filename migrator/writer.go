@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -87,7 +88,42 @@ func (m *Migrator) createPGPool(shutdownCtx context.Context) (*pgxpool.Pool, err
 	return pool, nil
 }
 
-// TODO: Implement
 func (m *Migrator) validateDestinationMappings(shutdownCtx context.Context, pool *pgxpool.Pool) error {
+	// Validate that destination tables exist
+	if err := m.validateDstTables(shutdownCtx, pool); err != nil {
+		return errors.Wrap(err, "error validating destination tables")
+	}
+
+	// Validate that destination columns exist + have correct types
+	if err := m.validateDstColumns(shutdownCtx, pool); err != nil {
+		return errors.Wrap(err, "error validating destination columns")
+	}
+
 	return nil
+}
+
+// TODO: Implement
+func (m *Migrator) validateDstTables(shutdownCtx context.Context, pool *pgxpool.Pool) error {
+	// Go through all mappings, parse the destination table and check if it exists
+	for mName, mEntry := range m.cfg.TOML.Mapping.Mapping {
+		// TODO: Implement
+	}
+
+	return nil
+}
+
+// TODO: Implement
+func (m *Migrator) validateDstColumns(shutdownCtx context.Context, pool *pgxpool.Pool) error {
+	return nil
+}
+
+func checkTableExists(conn *pgx.Conn, tableName string) (bool, error) {
+	var exists bool
+
+	err := conn.QueryRow(
+		context.Background(),
+		"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name=$1)", tableName,
+	).Scan(&exists)
+
+	return exists, err
 }
