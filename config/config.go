@@ -70,7 +70,8 @@ type TOML struct {
 
 type TOMLConfig struct {
 	LogLevel             string   `toml:"log_level"`
-	NumWorkers           int      `toml:"num_workers"`
+	NumProcessors        int      `toml:"num_processors"`
+	NumWriters           int      `toml:"num_writers"`
 	BatchSize            int      `toml:"batch_size"`
 	CheckpointFile       string   `toml:"checkpoint_file"`
 	CheckpointIndex      string   `toml:"checkpoint_index"`
@@ -174,8 +175,8 @@ func setTOMLDefaults(t *TOML) error {
 		t.Config.BatchSize = DefaultBatchSize
 	}
 
-	if t.Config.NumWorkers == 0 {
-		t.Config.NumWorkers = DefaultNumWorkers
+	if t.Config.NumProcessors == 0 {
+		t.Config.NumProcessors = DefaultNumWorkers
 	}
 
 	if t.Config.CheckpointInterval == 0 {
@@ -201,6 +202,23 @@ func Validate(c *Config) error {
 	if err := validateTOML(c.TOML); err != nil {
 		return errors.Wrap(err, "error validating toml config")
 	}
+
+	if err := validateDestinationMappings(c.TOML.Destination, c.TOML.Mapping); err != nil {
+		return errors.Wrap(err, "error validating destination mappings")
+	}
+
+	return nil
+}
+
+// TODO: Implement
+func validateDestinationMappings(d *TOMLDestination, m *TOMLMapping) error {
+	// TODO: Validate that we can connect to the destination
+
+	// TODO: Validate that the destination tables exist
+
+	// TODO: Validate that the destination columns exist
+
+	// TODO: Validate that the destination columns are the correct type
 
 	return nil
 }
@@ -242,7 +260,7 @@ func validateTOMLConfig(c *TOMLConfig) error {
 		return errors.Errorf("config.batch_size must be between %d and %d", MinBatchSize, MaxBatchSize)
 	}
 
-	if c.NumWorkers < MinNumWorkers || c.NumWorkers > MaxNumWorkers {
+	if c.NumProcessors < MinNumWorkers || c.NumProcessors > MaxNumWorkers {
 		return errors.Errorf("config.num_workers must be between %d and %d", MinNumWorkers, MaxNumWorkers)
 	}
 

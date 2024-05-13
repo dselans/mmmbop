@@ -9,19 +9,21 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func (m *Migrator) runWorker(
+func (m *Migrator) runProcessor(
 	shutdownCtx context.Context,
 	id int,
-	jobCh <-chan *WorkerJob,
-	cpChan chan<- *CheckpointJob,
+	jobCh <-chan *ProcessorJob,
+	wjCh chan<- *WriterJob,
 ) error {
 	llog := m.log.WithFields(logrus.Fields{
-		"method": "runWorker",
+		"method": "runProcessor",
 		"id":     id,
 	})
 
 	llog.Debug("start")
 	defer llog.Debug("exit")
+
+	var numProcessed int
 
 MAIN:
 	for {
@@ -37,21 +39,21 @@ MAIN:
 
 			llog.Debugf("received job at offset '%v'", job.Offset)
 
-			if err := m.processJob(job); err != nil {
+			wj, err := m.processJob(job)
+			if err != nil {
 				return errors.Wrap(err, "error processing job")
 			}
 
-			cpChan <- &CheckpointJob{
-				Offset:   job.Offset,
-				WorkerID: id,
-			}
+			wjCh <- wj
 		}
 	}
+
+	llog.Debugf("handled '%d' jobs", numProcessed)
 
 	return nil
 }
 
-func (m *Migrator) processJob(j *WorkerJob) error {
+func (m *Migrator) processJob(j *ProcessorJob) (*WriterJob, error) {
 	llog := m.log.WithFields(logrus.Fields{
 		"method": "processWork",
 	})
@@ -66,13 +68,18 @@ func (m *Migrator) processJob(j *WorkerJob) error {
 
 	if _, ok := m.checksums[checksum]; ok {
 		llog.Debugf("CHECKSUM %s ALREADY IN MAP (offset '%d')", checksum, j.Offset)
-		return nil
+		return nil, errors.New("checksum already in map")
 	}
 
 	m.checksums[checksum] = struct{}{}
 
 	// END Temporary dupe checks
 
-	// TODO: Implement inserting data into pg
-	return nil
+	// TODO: Verify that src contains all fields in mapping
+	// TODO: Convert src fields to dst fields
+	// TODO: Add writer job
+
+	return &WriterJob{
+		Offset: j.Offset,
+	}, nil
 }

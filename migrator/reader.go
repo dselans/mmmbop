@@ -11,7 +11,7 @@ import (
 	"github.com/timpalpant/gzran"
 )
 
-func (m *Migrator) runReader(shutdownCtx context.Context, workCh chan<- *WorkerJob) error {
+func (m *Migrator) runReader(shutdownCtx context.Context, workCh chan<- *ProcessorJob) error {
 	llog := m.log.WithFields(logrus.Fields{
 		"method": "runReader",
 	})
@@ -60,7 +60,7 @@ MAIN:
 			}
 
 			llog.Debugf("sending job at offset: %d", offset)
-			workCh <- &WorkerJob{
+			workCh <- &ProcessorJob{
 				Data:   line,
 				Offset: offset,
 			}

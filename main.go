@@ -75,7 +75,7 @@ func displayConfig(cfg *config.Config) {
 	logrus.Infof("  quiet: %v", cfg.CLI.Quiet)
 	logrus.Info("")
 	logrus.Info("  [CONFIG]")
-	logrus.Infof("  config.num_workers: %d", cfg.TOML.Config.NumWorkers)
+	logrus.Infof("  config.num_workers: %d", cfg.TOML.Config.NumProcessors)
 	logrus.Infof("  config.batch_size: %d", cfg.TOML.Config.BatchSize)
 	logrus.Infof("  config.checkpoint_file: %s", cfg.TOML.Config.CheckpointFile)
 	logrus.Infof("  config.checkpoint_index: %s", cfg.TOML.Config.CheckpointIndex)
