@@ -56,9 +56,10 @@ func (m *Migrator) processJob(j *WorkerJob) error {
 		"method": "processWork",
 	})
 
-	checksum := fmt.Sprintf("%x", sha256.Sum256([]byte(j.Data)))
-
 	llog.Debugf("processing job at offset '%v'", j.Offset)
+
+	// BEGIN Temporary dupe checks
+	checksum := fmt.Sprintf("%x", sha256.Sum256([]byte(j.Data)))
 
 	m.checksumsMu.Lock()
 	defer m.checksumsMu.Unlock()
@@ -70,6 +71,8 @@ func (m *Migrator) processJob(j *WorkerJob) error {
 
 	m.checksums[checksum] = struct{}{}
 
-	// TODO: Implement
+	// END Temporary dupe checks
+
+	// TODO: Implement inserting data into pg
 	return nil
 }

@@ -20,7 +20,7 @@ Usage: mmmbop -h
             Show this help message
     -v, --version
             Show the version of the program
-    -c, --config cfg.toml (required)
+    -c, --config cfg.toml (default: config.toml)
             Path to the TOML configuration file
     -d, --dry-run
             Run the migration without writing to the destination database
@@ -31,10 +31,12 @@ Usage: mmmbop -h
     -o, --report-output [file]
             Write report output to file
     -R, --disable-resume
-            Disable resuming from a checkpoint
+            Disable resuming from a checkpoint (start from scratch every time)
     -C, --disable-color
             Disable color output
 ```
+
+
 
 ## Configuration
 The configuration file is a TOML file that looks like this:
@@ -53,6 +55,24 @@ The configuration file is a TOML file that looks like this:
 ## How often we will dump checkpointing info to disk (default: 1s)
 # checkpoint_interval = "1s"
 
+## By default, mmmbop will perform dupe checks when resuming a migration.
+## Set this to 'true' to disable dupe checking.
+# disable_dupecheck = true
+
+## By default, mmmbop performs migrations using checkpointing. Checkpointing
+## involves generating an index of the source file at the start of the migration
+## and periodically writing checkpoints to the checkpoint file.
+## 
+## The index is a list of offsets that mmmbop can use to quickly jump to a specific
+## point in the source file (rather than re-reading the whole file when a migration
+## is resumed).
+## 
+## Checkpointing is most useful when performing large migrations that are prone
+## to interruptions but less so if you are performing a quick, one-off migration.
+## 
+## Set this to 'true' to disable checkpointing.
+# disable_checkpoint = true
+
 [source]
 # Full path to the source file containing BSON documents
 file = "source.gzip"
@@ -60,7 +80,7 @@ file = "source.gzip"
 # Valid options are "gzip" or "plain"
 file_type = "gzip"
 
-# Valid options are 'json', 'bson'
+# Valid options are 'json'
 file_contents = "json"
 
 [destination]
@@ -78,7 +98,7 @@ foo_mapping = [
     { src = "grault", dst = "DST_TABLE_NAME.garply", conv = "bool" },
     { src = "waldo", dst = "DST_TABLE_NAME.fred", conv = "date" },
     { src = "plugh", dst = "DST_TABLE_NAME.xyzzy", conv = "datetime" },
-    { src = "thud", dst = "DST_TABLE_NAME.wibble", conv = "timestamp"} 
+    { src = "thud", dst = "DST_TABLE_NAME.wibble", conv = "timestamp", dupecheck = true } 
 ]
 ```
 
@@ -89,19 +109,24 @@ additional info:
 
 1. `log_level` - valid options are `debug`, `info`, `warn`, `error`, `fatal`, `panic`
 1. `checkpoint_interval` - is expecting Go-style duration strings (e.g. `1s`, `1m`, `1h`, etc.)
-1. `checkpoint_field` - is the field used for creating the "fetch query" TBD
+1. `checkpoint_index` -  at the start of the first migration, `mmmbop` generates
+an "index" that is used for speeding up offset lookups when resuming an interrupted
+migration.
 
 ### `[mapping]`
 1. At least one mapping must exist
-1. You can use a wildcard to match a field (e.g. `foo_*`) but
-it **SHOULD** match only one field; if it matches multiple - `mmmbop`
-will use the first field it finds. When in doubt, define the field explicitly.
+1. If `file_contents` is set to `json`, the `src` field should be the JSON field
+name using [gjson syntax](https://github.com/tidwall/gjson) (ie. `foo.bar.baz`, 
+`foo.0.bar` etc.)
 1. Valid `conv` options are: `int`, `string`, `float`, `bool`, `date`, `datetime`, `timestamp`, `bson`, `base64`
-1. Only the fields listed in the mapping will be migrated. If you want to migrate
-all fields, without specifying each field, use wildcards.
+1. Only the fields listed in the mapping will be migrated
 1. By default, if a field is not found in the source document, the field will be
 _skipped_ and the migration will NOT fail. If you want the migration to fail when
 a field is not found, set `required = true` in the mapping entry.
+1. Fields set as 'dupecheck' will be used for determining if destination already
+contains the entry. You can disable dupe checking altogether by specifying
+`disable_dupecheck = true` in the config section.
+    * NOTE: At least **ONE** field PER TABLE must be set with the `dupecheck` property
 
 ## Output
 The output produced by `mmmbop` includes the following information:
@@ -144,7 +169,12 @@ The output produced by `mmmbop` includes the following information:
 By default, reporting occurs every `10s` - you can change this by passing 
 `--report-interval [interval]` ([using standard Go durations](https://pkg.go.dev/time#ParseDuration)).
 
+## Benchmarks
+
+# `TODO: Add benchmarks`
+
 ## Performance
+
 This tool will _try_ to speed things up for the migration but there are still a
 few things you can do to improve performance:
 

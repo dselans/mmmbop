@@ -21,15 +21,18 @@ func (m *Migrator) runCheckpointer(cpControlCh <-chan bool, cpChan <-chan *Check
 	defer llog.Debug("exit")
 
 	var (
+		// We need the last job so that when checkpointer exits it is able to
+		// write the final checkpoint data to disk.
 		lastJob   *CheckpointJob
-		interrupt bool
+		exitState bool
 	)
 
 MAIN:
 	for {
 		select {
 		case state := <-cpControlCh:
-			interrupt = state
+			// If true, clean exit (ie. we are completed); if false, we were interrupted (ie. ctrl-c)
+			exitState = state
 			llog.Debug("received shutdown signal")
 			break MAIN
 		case cp := <-cpChan:
@@ -43,23 +46,18 @@ MAIN:
 		}
 	}
 
-	if !interrupt {
-		llog.Debug("final checkpoint save")
-		return m.saveCheckpoint(lastJob, true)
-	}
-
-	return nil
+	return m.saveCheckpoint(lastJob, exitState)
 }
 
-func (m *Migrator) saveCheckpoint(cp *CheckpointJob, completed ...bool) error {
+func (m *Migrator) saveCheckpoint(cp *CheckpointJob, exitState ...bool) error {
 	llog := m.log.WithFields(logrus.Fields{
 		"method": "saveCheckpoint",
 	})
 
 	// Skip checkpoint if it's NOT zero/unset OR we haven't passed CheckpointInterval
 	if !m.last.IsZero() && m.last.Add(time.Duration(m.cfg.TOML.Config.CheckpointInterval)).After(time.Now()) {
-		// Only skip if this is NOT a "completion" save request
-		if len(completed) == 0 {
+		// Do NOT skip if an exitState is set
+		if len(exitState) == 0 {
 			llog.Debugf("skipping checkpoint save, last save was %v ago", time.Since(m.last))
 			return nil
 		}
@@ -73,8 +71,8 @@ func (m *Migrator) saveCheckpoint(cp *CheckpointJob, completed ...bool) error {
 	m.cp.IndexOffset = cp.Offset
 	m.cp.LastUpdated = time.Now()
 
-	if len(completed) > 0 {
-		llog.Debug("completed is true! Updating completed at time!")
+	if len(exitState) > 0 && exitState[0] {
+		llog.Debug("clean shutdown detected - updating CompletedAt time")
 		completedAt := time.Now()
 		m.cp.CompletedAt = &completedAt
 	}

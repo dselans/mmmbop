@@ -69,12 +69,14 @@ type TOML struct {
 }
 
 type TOMLConfig struct {
-	LogLevel           string   `toml:"log_level"`
-	NumWorkers         int      `toml:"num_workers"`
-	BatchSize          int      `toml:"batch_size"`
-	CheckpointFile     string   `toml:"checkpoint_file"`
-	CheckpointIndex    string   `toml:"checkpoint_index"`
-	CheckpointInterval duration `toml:"checkpoint_interval"`
+	LogLevel             string   `toml:"log_level"`
+	NumWorkers           int      `toml:"num_workers"`
+	BatchSize            int      `toml:"batch_size"`
+	CheckpointFile       string   `toml:"checkpoint_file"`
+	CheckpointIndex      string   `toml:"checkpoint_index"`
+	CheckpointInterval   duration `toml:"checkpoint_interval"`
+	DisableCheckpointing bool     `toml:"disable_checkpointing"`
+	DisableDupecheck     bool     `toml:"disable_dupecheck"`
 }
 
 type CheckpointFile struct {
@@ -98,10 +100,11 @@ type TOMLMapping struct {
 }
 
 type TOMLMappingEntry struct {
-	Src      string `toml:"src"`
-	Dst      string `toml:"dst"`
-	Conv     string `toml:"conv"`
-	Required bool   `toml:"required"`
+	Src       string `toml:"src"`
+	Dst       string `toml:"dst"`
+	Conv      string `toml:"conv"`
+	Required  bool   `toml:"required"`
+	DupeCheck bool   `toml:"dupe_check"`
 }
 
 type CLI struct {
