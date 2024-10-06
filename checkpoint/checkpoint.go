@@ -21,12 +21,12 @@ const (
 
 func Load(checkpointFile, sourceFile, sourceFileType string) (*types.Checkpoint, error) {
 	startedAt := time.Now()
-	logrus.Debugf("checkpoint loading started at '%s'", startedAt)
+	logrus.Debugf("Checkpoint loading started at '%s'", startedAt)
 
 	defer func() {
 		endedAt := time.Now()
-		logrus.Debugf("checkpoint loading completed at '%s'", endedAt)
-		logrus.Debugf("checkpoint loading took '%s'", endedAt.Sub(startedAt))
+		logrus.Debugf("Checkpoint loading completed at '%s'", endedAt)
+		logrus.Debugf("Checkpoint loading took '%s'", endedAt.Sub(startedAt))
 	}()
 
 	var createCheckpoint bool
@@ -42,10 +42,10 @@ func Load(checkpointFile, sourceFile, sourceFileType string) (*types.Checkpoint,
 	}
 
 	if createCheckpoint {
-		logrus.Debugf("creating checkpoint file '%s'", checkpointFile)
+		logrus.Debugf("Creating checkpoint file '%s'", checkpointFile)
 		return create(checkpointFile, sourceFile, sourceFileType)
 	} else {
-		logrus.Debugf("loading checkpoint file '%s'", checkpointFile)
+		logrus.Debugf("Loading checkpoint file '%s'", checkpointFile)
 		return load(checkpointFile)
 	}
 }

@@ -18,12 +18,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	//if cfg.CLI.Debug {
-	//	logrus.Info("debug mode enabled")
-	//	logrus.SetLevel(logrus.DebugLevel)
-	//}
-
-	logrus.SetLevel(logrus.DebugLevel)
+	if cfg.CLI.Debug {
+		logrus.Info("Debug enabled")
+		logrus.SetLevel(logrus.DebugLevel)
+	}
 
 	displayConfig(cfg)
 
@@ -32,7 +30,7 @@ func main() {
 	// Load config, checkpoint file, generate/load index etc.
 	m, err := migrator.New(cfg)
 	if err != nil {
-		logrus.Errorf("unable to create migrator: %s", err)
+		logrus.Errorf("Unable to create migrator: %s", err)
 		os.Exit(1)
 	}
 
@@ -54,7 +52,7 @@ func main() {
 
 	// Run the migrator
 	if err := m.Run(ctx, cancel); err != nil {
-		logrus.Errorf("error during migrator run: %s", err)
+		logrus.Errorf("Error during migrator run: %s", err)
 		os.Exit(1)
 	}
 }

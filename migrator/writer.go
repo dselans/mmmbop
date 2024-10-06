@@ -23,8 +23,8 @@ func (m *Migrator) runWriter(shutdownCtx context.Context, id int, writerCh <-cha
 		"id":     id,
 	})
 
-	llog.Debug("start")
-	defer llog.Debug("exit")
+	llog.Debug("Start")
+	defer llog.Debug("Exit")
 
 	// Create connection pool
 	pool, err := m.createPGPool(shutdownCtx)
@@ -38,21 +38,22 @@ func (m *Migrator) runWriter(shutdownCtx context.Context, id int, writerCh <-cha
 	}
 
 	var numWritten int
+	fmt.Println("Writer loop starting...")
 
 MAIN:
 	for {
 		select {
 		case <-shutdownCtx.Done():
-			llog.Debug("received shutdown signal")
+			llog.Debug("Received shutdown signal")
 			break MAIN
 		case job, open := <-writerCh:
 			if !open {
-				llog.Debug("writer channel closed - exiting writer")
+				llog.Debug("Writer channel closed - exiting writer")
 				break MAIN
 			}
 
 			if err := m.writeJob(shutdownCtx, pool, job); err != nil {
-				llog.Errorf("error writing job: %v", err)
+				llog.Errorf("Error writing job: %v", err)
 				return errors.Wrap(err, "error writing job")
 			}
 
@@ -60,12 +61,13 @@ MAIN:
 			cpChan <- &CheckpointJob{
 				Offset: job.Offset,
 			}
+			fmt.Println("END: Sending checkpoint job")
 
 			numWritten += 1
 		}
 	}
 
-	llog.Debugf("handled '%d' jobs", numWritten)
+	llog.Debugf("Handled '%d' jobs", numWritten)
 
 	return nil
 }

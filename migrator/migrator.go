@@ -134,8 +134,8 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 		pWg.Add(1)
 
 		go func() {
-			m.log.Debugf("worker %d start", i)
-			defer m.log.Debugf("worker %d exit", i)
+			m.log.Debugf("Worker %d start", i)
+			defer m.log.Debugf("Worker %d exit", i)
 			defer pWg.Done()
 
 			if err := m.runProcessor(shutdownCtx, i, pjCh, wjCh); err != nil {
@@ -144,32 +144,31 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 		}()
 	}
 
-	m.log.Debug("launching reader")
+	m.log.Debug("Launching reader")
 
 	// Launch reader
 	go func() {
-		m.log.Debug("reader start")
-		defer m.log.Debug("reader exit")
+		m.log.Debug("Reader start")
+		defer m.log.Debug("Reader exit")
 
 		if err := m.runReader(shutdownCtx, pjCh); err != nil {
 			errCh <- fmt.Errorf("error in reader: %v", err)
 		}
 
 		// Reader has finished
-		m.log.Debug("reader finished, nothing else to do")
+		m.log.Debug("Reader finished, nothing else to do")
 		finCh <- true
 	}()
 
-	m.log.Debug("launching writers")
+	m.log.Debug("Launching writers")
 
-	// TODO: Launch writers
 	for i := 0; i < m.cfg.TOML.Config.NumWriters; i++ {
 		wWg.Add(1)
 
 		go func() {
-			m.log.Debugf("writer %d start", i)
-			defer m.log.Debugf("writer %d exit", i)
-			defer pWg.Done()
+			m.log.Debugf("Writer %d start", i)
+			defer m.log.Debugf("Writer %d exit", i)
+			defer wWg.Done()
 
 			if err := m.runWriter(shutdownCtx, i, wjCh, cpjCh); err != nil {
 				errCh <- fmt.Errorf("error in writer %d: %v", i, err)
@@ -177,12 +176,12 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 		}()
 	}
 
-	m.log.Debug("launching checkpointer")
+	m.log.Debug("Launching checkpointer")
 
 	// Launch checkpointer
 	go func() {
-		m.log.Debug("checkpointer start")
-		defer m.log.Debug("checkpointer exit")
+		m.log.Debug("Checkpointer start")
+		defer m.log.Debug("Checkpointer exit")
 
 		cpWg.Add(1)
 		defer cpWg.Done()
@@ -192,20 +191,20 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 		}
 	}()
 
-	m.log.Debug("continuously watching shutdown and finch")
+	m.log.Debug("Continuously watching shutdown and finch")
 
 	// Read from errCh to detect errors
 	select {
 	case <-shutdownCtx.Done():
-		m.log.Debug("received context done, waiting for workers to stop")
+		m.log.Debug("Received context done, waiting for workers to stop")
 		return m.shutdown(pWg, cpWg, shutdownCancel, cpControlCh, false)
 	case <-finCh:
-		m.log.Debug("received completion signal, stopping workers and checkpointer")
+		m.log.Debug("Received completion signal, stopping workers and checkpointer")
 		m.log.Info("Migrator run completed")
 		return m.shutdown(pWg, cpWg, shutdownCancel, cpControlCh, true)
 	case err := <-errCh:
 		if err != nil {
-			return fmt.Errorf("received error: %v", err)
+			return errors.Wrap(err, "received component error")
 		}
 
 		return m.shutdown(pWg, cpWg, shutdownCancel, cpControlCh, false)
@@ -214,6 +213,7 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 
 // shutdown
 func (m *Migrator) shutdown(wWg, cpWg *sync.WaitGroup, shutdownCancel context.CancelFunc, cpControlCh chan<- bool, cleanExit bool) error {
+	// Tell workers to exit
 	if err := timeout(func() {
 		shutdownCancel()
 		wWg.Wait()
@@ -221,7 +221,7 @@ func (m *Migrator) shutdown(wWg, cpWg *sync.WaitGroup, shutdownCancel context.Ca
 		return errors.New("timed out waiting for workers to exit")
 	}
 
-	// Workers are stopped, tell checkpointer to stop
+	// Tell checkpointers to exit
 	if err := timeout(func() {
 		cpControlCh <- cleanExit
 		cpWg.Wait()

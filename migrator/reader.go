@@ -15,8 +15,8 @@ func (m *Migrator) runReader(shutdownCtx context.Context, workCh chan<- *Process
 	llog := m.log.WithFields(logrus.Fields{
 		"method": "runReader",
 	})
-	llog.Debug("start")
-	defer llog.Debug("exit")
+	llog.Debug("Start")
+	defer llog.Debug("Exit")
 
 	f, err := os.Open(m.cfg.TOML.Source.File)
 	if err != nil {
@@ -41,7 +41,7 @@ MAIN:
 	for scanner.Scan() {
 		select {
 		case <-shutdownCtx.Done():
-			llog.Debug("received shutdown signal")
+			llog.Debug("Received shutdown signal")
 			break MAIN
 		default:
 			line := scanner.Text()
@@ -59,7 +59,7 @@ MAIN:
 				return errors.Wrap(err, "unable to seek to current offset")
 			}
 
-			llog.Debugf("sending job at offset: %d", offset)
+			llog.Debugf("Sending job at offset: %d", offset)
 			workCh <- &ProcessorJob{
 				Data:   line,
 				Offset: offset,
@@ -67,7 +67,7 @@ MAIN:
 
 			numProcessed += 1
 
-			llog.Debugf("proccessed '%d' jobs", numProcessed)
+			llog.Debugf("Proccessed '%d' jobs", numProcessed)
 		}
 	}
 

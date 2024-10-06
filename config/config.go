@@ -18,6 +18,7 @@ const (
 
 	DefaultBatchSize          = 10
 	DefaultNumWorkers         = 2
+	DefaultNumWriters         = 2
 	DefaultCheckpointInterval = duration(5 * time.Second)
 	DefaultCheckpointFile     = "checkpoint.json"
 
@@ -176,6 +177,10 @@ func setTOMLDefaults(t *TOML) error {
 
 	if t.Config.NumProcessors == 0 {
 		t.Config.NumProcessors = DefaultNumWorkers
+	}
+
+	if t.Config.NumWriters == 0 {
+		t.Config.NumWriters = DefaultNumWriters
 	}
 
 	if t.Config.CheckpointInterval == 0 {

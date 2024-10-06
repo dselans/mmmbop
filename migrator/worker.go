@@ -20,8 +20,8 @@ func (m *Migrator) runProcessor(
 		"id":     id,
 	})
 
-	llog.Debug("start")
-	defer llog.Debug("exit")
+	llog.Debug("Start")
+	defer llog.Debug("Exit")
 
 	var numProcessed int
 
@@ -29,26 +29,29 @@ MAIN:
 	for {
 		select {
 		case <-shutdownCtx.Done():
-			llog.Debug("received shutdown signal")
+			llog.Debug("Received shutdown signal")
 			break MAIN
 		case job, open := <-jobCh:
 			if !open {
-				llog.Debug("job channel closed - exiting worker")
+				llog.Debug("Job channel closed - exiting worker")
 				break MAIN
 			}
 
-			llog.Debugf("received job at offset '%v'", job.Offset)
+			llog.Debugf("Received job at offset '%v'", job.Offset)
 
 			wj, err := m.processJob(job)
 			if err != nil {
 				return errors.Wrap(err, "error processing job")
 			}
 
-			wjCh <- wj
+			// Send job in goroutine to avoid blocking
+			go func() {
+				wjCh <- wj
+			}()
 		}
 	}
 
-	llog.Debugf("handled '%d' jobs", numProcessed)
+	llog.Debugf("Handled '%d' jobs", numProcessed)
 
 	return nil
 }
@@ -58,7 +61,7 @@ func (m *Migrator) processJob(j *ProcessorJob) (*WriterJob, error) {
 		"method": "processWork",
 	})
 
-	llog.Debugf("processing job at offset '%v'", j.Offset)
+	llog.Debugf("Processing job at offset '%v'", j.Offset)
 
 	// BEGIN Temporary dupe checks
 	checksum := fmt.Sprintf("%x", sha256.Sum256([]byte(j.Data)))
