@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dselans/mmmbop/checkpoint"
+	"github.com/dselans/mmmbop/checkpoint/types"
 	"github.com/dselans/mmmbop/config"
 )
 
@@ -26,7 +27,7 @@ type CheckpointJob struct {
 type Migrator struct {
 	cfg         *config.Config
 	log         *logrus.Entry
-	cp          *checkpoint.Checkpoint
+	cp          *types.Checkpoint
 	last        time.Time
 	checksums   map[string]struct{}
 	checksumsMu *sync.Mutex
@@ -70,7 +71,9 @@ func New(cfg *config.Config) (*Migrator, error) {
 //
 // [Shutdown]
 //
-// Shutdown is complex. Here's the gist:
+// Shutdown is complex.
+//
+//	Here's the gist:
 //
 // A shutdown can be initiated in 3 ways:
 //  1. CTRL-C or sent SIGKILL
@@ -141,6 +144,8 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 		}()
 	}
 
+	m.log.Debug("launching reader")
+
 	// Launch reader
 	go func() {
 		m.log.Debug("reader start")
@@ -154,6 +159,8 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 		m.log.Debug("reader finished, nothing else to do")
 		finCh <- true
 	}()
+
+	m.log.Debug("launching writers")
 
 	// TODO: Launch writers
 	for i := 0; i < m.cfg.TOML.Config.NumWriters; i++ {
@@ -170,6 +177,8 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 		}()
 	}
 
+	m.log.Debug("launching checkpointer")
+
 	// Launch checkpointer
 	go func() {
 		m.log.Debug("checkpointer start")
@@ -182,6 +191,8 @@ func (m *Migrator) Run(shutdownCtx context.Context, shutdownCancel context.Cance
 			errCh <- fmt.Errorf("error in checkpointer: %v", err)
 		}
 	}()
+
+	m.log.Debug("continuously watching shutdown and finch")
 
 	// Read from errCh to detect errors
 	select {

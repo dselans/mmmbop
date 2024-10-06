@@ -10,28 +10,16 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/timpalpant/gzran"
+
+	"github.com/dselans/mmmbop/checkpoint/types"
+	"github.com/dselans/mmmbop/validate"
 )
 
 const (
 	IndexSuffix = ".index"
 )
 
-// Checkpoint contains checkpoint info
-type Checkpoint struct {
-	IndexFile   string     `json:"index_file"`
-	IndexOffset int64      `json:"index_offset"`
-	SourceFile  string     `json:"source_file"`
-	StartedAt   time.Time  `json:"started_at"`
-	LastUpdated time.Time  `json:"last_updated"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-
-	// Not marshalled
-	Index gzran.Index `json:"-"`
-
-	*sync.Mutex
-}
-
-func Load(checkpointFile, sourceFile, sourceFileType string) (*Checkpoint, error) {
+func Load(checkpointFile, sourceFile, sourceFileType string) (*types.Checkpoint, error) {
 	startedAt := time.Now()
 	logrus.Debugf("checkpoint loading started at '%s'", startedAt)
 
@@ -62,13 +50,13 @@ func Load(checkpointFile, sourceFile, sourceFileType string) (*Checkpoint, error
 	}
 }
 
-func load(checkpointFile string) (*Checkpoint, error) {
+func load(checkpointFile string) (*types.Checkpoint, error) {
 	data, err := os.ReadFile(checkpointFile)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read checkpoint file")
 	}
 
-	cp := &Checkpoint{
+	cp := &types.Checkpoint{
 		Mutex: &sync.Mutex{},
 	}
 
@@ -76,7 +64,11 @@ func load(checkpointFile string) (*Checkpoint, error) {
 		return nil, errors.Wrap(err, "unable to unmarshal checkpoint file")
 	}
 
-	if !cp.CompletedAt.IsZero() {
+	if err := validate.Checkpoint(cp); err != nil {
+		return nil, errors.Wrap(err, "failed checkpoint validation")
+	}
+
+	if cp.CompletedAt != nil && !cp.CompletedAt.IsZero() {
 		return nil, errors.New("migration already completed")
 	}
 
@@ -95,10 +87,13 @@ func load(checkpointFile string) (*Checkpoint, error) {
 
 	cp.Index = index
 
+	// Re-create mutex
+	cp.Mutex = &sync.Mutex{}
+
 	return cp, nil
 }
 
-func create(checkpointFile, sourceFile, sourceFileType string) (*Checkpoint, error) {
+func create(checkpointFile, sourceFile, sourceFileType string) (*types.Checkpoint, error) {
 	// Create the index
 	index, err := generateIndex(sourceFileType, sourceFile)
 	if err != nil {
@@ -119,7 +114,7 @@ func create(checkpointFile, sourceFile, sourceFileType string) (*Checkpoint, err
 	}
 
 	// Generate checkpoint JSON file
-	cp := &Checkpoint{
+	cp := &types.Checkpoint{
 		IndexFile:   checkpointFile + IndexSuffix,
 		IndexOffset: 0,
 		SourceFile:  sourceFile,
@@ -180,21 +175,4 @@ func generateGzipIndex(sourceFile string) (gzran.Index, error) {
 	}
 
 	return reader.Index, nil
-}
-
-func (cp *Checkpoint) Save(checkpointFile string) error {
-	cp.Lock()
-	defer cp.Unlock()
-
-	data, err := json.MarshalIndent(cp, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "unable to marshal checkpoint file")
-	}
-
-	// TODO: Improve writing to file by first writing to temp file and renaming
-	if err := os.WriteFile(checkpointFile, data, 0644); err != nil {
-		return errors.Wrap(err, "unable to write checkpoint file")
-	}
-
-	return nil
 }

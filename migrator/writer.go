@@ -2,12 +2,15 @@ package migrator
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	"github.com/dselans/mmmbop/config"
 )
 
 type WriterJob struct {
@@ -95,34 +98,126 @@ func (m *Migrator) validateDestinationMappings(shutdownCtx context.Context, pool
 	}
 
 	// Validate that destination columns exist + have correct types
-	if err := m.validateDstColumns(shutdownCtx, pool); err != nil {
+	if err := m.validateDstColumns(pool); err != nil {
 		return errors.Wrap(err, "error validating destination columns")
 	}
 
 	return nil
 }
 
-// TODO: Implement
+func parseDestination(dst string) (string, string) {
+	// dst is in the format "table:column"
+	parts := strings.Split(dst, ":")
+	if len(parts) != 2 {
+		return "", ""
+	}
+
+	return parts[0], parts[1]
+}
+
+type Table string
+
+type Column struct {
+	Name string
+	Conv string
+}
+
+func getDestinationMappings(input *config.TOMLMapping) (map[Table][]Column, error) {
+	mappings := make(map[Table][]Column)
+
+MAIN:
+	for mName, mEntries := range *input {
+		for _, entry := range mEntries {
+			tStr, cStr := parseDestination(entry.Dst)
+			if tStr == "" || cStr == "" {
+				return nil, errors.Errorf("unable to determine destination table or column for mapping '%s'", mName)
+			}
+
+			t := Table(tStr)
+
+			if _, ok := mappings[t]; !ok {
+				mappings[t] = make([]Column, 0)
+			}
+
+			// Get rid of dupes
+			for _, col := range mappings[t] {
+				if col.Name == cStr {
+					continue MAIN
+				}
+			}
+
+			// Dupe not detected, add it to map
+			mappings[t] = append(mappings[t], Column{
+				Name: cStr,
+				Conv: entry.Conv,
+			})
+		}
+	}
+
+	return mappings, nil
+}
+
 func (m *Migrator) validateDstTables(shutdownCtx context.Context, pool *pgxpool.Pool) error {
-	// Go through all mappings, parse the destination table and check if it exists
-	for mName, mEntry := range m.cfg.TOML.Mapping.Mapping {
-		// TODO: Implement
+	dstMappings, err := getDestinationMappings(m.cfg.TOML.Mapping)
+	if err != nil {
+		return errors.Wrap(err, "error getting destination mappings")
+	}
+
+	for table, _ := range dstMappings {
+		exists, err := checkTableExists(shutdownCtx, pool, table)
+		if err != nil {
+			return errors.Wrapf(err, "error checking if table '%s' exists", table)
+		}
+
+		if !exists {
+			return errors.Errorf("destination table '%s' does not exist", table)
+		}
 	}
 
 	return nil
 }
 
 // TODO: Implement
-func (m *Migrator) validateDstColumns(shutdownCtx context.Context, pool *pgxpool.Pool) error {
+func (m *Migrator) validateDstColumns(pool *pgxpool.Pool) error {
+	dstMappings, err := getDestinationMappings(m.cfg.TOML.Mapping)
+	if err != nil {
+		return errors.Wrap(err, "error getting destination mappings")
+	}
+
+	for table, columns := range dstMappings {
+		for _, c := range columns {
+			if err := checkColumn(pool, table, c); err != nil {
+				return errors.Wrapf(err, "error during column check for '%s.%s'", table, c.Name)
+			}
+		}
+	}
+
 	return nil
 }
 
-func checkTableExists(conn *pgx.Conn, tableName string) (bool, error) {
+func checkColumn(pool *pgxpool.Pool, t Table, c Column) error {
+	var dtype string
+	query := `
+        SELECT data_type FROM information_schema.columns 
+        WHERE table_name=$1 AND column_name=$2
+    `
+	err := pool.QueryRow(context.Background(), query, t, c).Scan(&dtype)
+	if err != nil {
+		return errors.Wrap(err, "error querying information_schema.columns")
+	}
+
+	// Check if column type matches
+	fmt.Println("our dtype is: ", dtype)
+
+	return errors.New("tmp error return")
+}
+
+func checkTableExists(shutdownCtx context.Context, pool *pgxpool.Pool, t Table) (bool, error) {
 	var exists bool
 
-	err := conn.QueryRow(
-		context.Background(),
-		"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name=$1)", tableName,
+	err := pool.QueryRow(
+		shutdownCtx,
+		"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name=$1)", string(t),
 	).Scan(&exists)
 
 	return exists, err

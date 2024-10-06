@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 
@@ -15,16 +14,20 @@ import (
 func main() {
 	cfg, err := config.NewConfig()
 	if err != nil {
-		fmt.Println("ERROR: ", err)
+		logrus.Error(err)
 		os.Exit(1)
 	}
 
-	if cfg.CLI.Debug {
-		logrus.Info("debug mode enabled")
-		logrus.SetLevel(logrus.DebugLevel)
-	}
+	//if cfg.CLI.Debug {
+	//	logrus.Info("debug mode enabled")
+	//	logrus.SetLevel(logrus.DebugLevel)
+	//}
+
+	logrus.SetLevel(logrus.DebugLevel)
 
 	displayConfig(cfg)
+
+	logrus.Info("Starting migrator...")
 
 	// Load config, checkpoint file, generate/load index etc.
 	m, err := migrator.New(cfg)
@@ -61,7 +64,7 @@ func displayConfig(cfg *config.Config) {
 		return
 	}
 
-	logrus.Info("mmbop settings:")
+	logrus.Infof("Loaded TOML config from '%s':", cfg.CLI.ConfigFile)
 	logrus.Info("  [CLI]")
 	logrus.Infof("  version: %s", config.VERSION)
 	logrus.Infof("  debug: %v", cfg.CLI.Debug)
@@ -91,7 +94,26 @@ func displayConfig(cfg *config.Config) {
 	logrus.Info("")
 	logrus.Info("  [MAPPING]")
 
-	for k, v := range cfg.TOML.Mapping.Mapping {
-		logrus.Infof("  mapping.%s: %v", k, v)
+	for k, v := range *cfg.TOML.Mapping {
+		logrus.Infof("  mapping.%s:", k)
+
+		for i, m := range v {
+			logrus.Infof("    [%d] src: %s ", i, m.Src)
+			logrus.Infof("    [%d] dst: %s ", i, m.Dst)
+			logrus.Infof("    [%d] conv: %s ", i, m.Conv)
+
+			if m.Required != nil {
+				logrus.Infof("    [%d] required: %v ", i, *m.Required)
+			}
+
+			if m.DupeCheck != nil {
+				logrus.Infof("    [%d] dupe_check: %v ", i, *m.DupeCheck)
+			}
+
+			// If NOT last entry, print separator
+			if i != len(v)-1 {
+				logrus.Info("    ---")
+			}
+		}
 	}
 }

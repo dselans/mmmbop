@@ -52,6 +52,7 @@ var (
 		"time":      {},
 		"json":      {},
 		"date":      {},
+		"datetime":  {},
 		"timestamp": {},
 	}
 )
@@ -96,16 +97,14 @@ type TOMLDestination struct {
 	DSN  string `toml:"dsn"`
 }
 
-type TOMLMapping struct {
-	Mapping map[string][]*TOMLMappingEntry `toml:"mapping"`
-}
+type TOMLMapping map[string][]*TOMLMappingEntry
 
 type TOMLMappingEntry struct {
 	Src       string `toml:"src"`
 	Dst       string `toml:"dst"`
 	Conv      string `toml:"conv"`
-	Required  bool   `toml:"required"`
-	DupeCheck bool   `toml:"dupe_check"`
+	Required  *bool  `toml:"required,omitempty"`
+	DupeCheck *bool  `toml:"dupe_check,omitempty"`
 }
 
 type CLI struct {
@@ -347,7 +346,7 @@ func validateTOMLMapping(m *TOMLMapping) error {
 		return errors.New("mapping cannot be empty")
 	}
 
-	for name, entries := range m.Mapping {
+	for name, entries := range *m {
 		if err := validateMappingEntries(name, entries); err != nil {
 			return errors.Wrap(err, "error validating mapping entries")
 		}
@@ -389,7 +388,7 @@ func validateMappingEntry(e *TOMLMappingEntry) error {
 	}
 
 	if _, ok := validConvs[e.Conv]; !ok {
-		return errors.Errorf("mapping entry.conv %s is invalid", e.Conv)
+		return errors.Errorf("unknown conv '%s'", e.Conv)
 	}
 
 	return nil
